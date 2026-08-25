@@ -1,0 +1,77 @@
+# Byte-compiled / optimized / Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+jwt_secret*
+
+# OmniBrain Application & Staging Directories
+staging_uploads/
+temp_uploads/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# Local Vector Databases & Relational DBs
+data/
+*.db
+*.sqlite
+*.sqlite3
+qdrant_storage/
+faiss_index/
+*.faiss
+*.pkl
+
+# Streamlit Local Cache & Credentials
+.streamlit/secrets.toml
+
+# Guardrails & Observability Caches
+.langfuse/
+.nemo/
+
+# IDE / Editor Specific Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
