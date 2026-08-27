@@ -3,8 +3,8 @@ from typing import Any
 
 class VisionAgent:
     """
-    Agent responsible for reasoning over visual content
-    extracted from uploaded documents.
+    Multimodal reasoning agent for charts, images,
+    diagrams and other visual document content.
     """
 
     name = "vision_agent"
@@ -18,8 +18,7 @@ class VisionAgent:
         images: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
-        Answer questions about charts, diagrams, tables,
-        and other visual document content.
+        Analyze visual document content against a user query.
         """
 
         if not query or not query.strip():
@@ -42,16 +41,25 @@ class VisionAgent:
 
         results = []
 
-        for image in images:
-            result = await self.vision_model.analyze(
-                image=image,
-                query=query,
-            )
+        try:
+            for image in images:
+                result = await self.vision_model.analyze(
+                    image=image,
+                    query=query,
+                )
 
-            results.append(result)
+                results.append(result)
 
-        return {
-            "success": True,
-            "agent": self.name,
-            "results": results,
-        }
+            return {
+                "success": True,
+                "agent": self.name,
+                "results": results,
+            }
+
+        except Exception as exc:
+            return {
+                "success": False,
+                "agent": self.name,
+                "results": [],
+                "error": str(exc),
+            }
