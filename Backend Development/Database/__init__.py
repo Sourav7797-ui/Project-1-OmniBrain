@@ -1,6 +1,6 @@
 """
 OmniBrain Database and Vector Store Module.
-Exposes database models, session factories, and system-wide Pydantic schemas/DTOs.
+Exposes database models, session factories, vector store, and system-wide Pydantic schemas/DTOs.
 """
 
 from .database import (
@@ -17,6 +17,10 @@ from .models import (
     ChatSession,
     ChatMessage,
     AuditLog,
+)
+from .vector_store import (
+    QdrantVectorStore,
+    vector_store,
 )
 from .schemas import (
     # Auth & User Schemas
@@ -73,6 +77,9 @@ __all__ = [
     "get_db",
     "init_db",
     "close_db",
+    # Vector Store
+    "QdrantVectorStore",
+    "vector_store",
     # ORM Models
     "User",
     "Document",
