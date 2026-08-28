@@ -1,14 +1,15 @@
-import uuid
 from datetime import datetime
-from typing import Dict, Any, List
-from fastapi import APIRouter, Depends, HTTPException, status
-from Database.schemas import ChatRequest, ChatResponse, Citation, TokenData
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from Database.schemas import ChatRequest, ChatResponse, Citation, HistoryResponse, MessageRecord, TokenData
 from auth import get_current_user
 
 router = APIRouter()
 
+SESSION_STORAGE: Dict[str, List[Dict[str, Any]]] = {}
 
-async def invoke_agent_supervisor(query: str, session_id: str, filters: Dict[str, Any] = None) -> Dict[str, Any]:
+
+async def invoke_agent_supervisor(query: str, session_id: str, filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         from Agents.supervisor import run_supervisor_workflow
         result = await run_supervisor_workflow(
@@ -42,6 +43,34 @@ async def invoke_agent_supervisor(query: str, session_id: str, filters: Dict[str
         }
 
 
+async def persist_chat_turn(session_id: str, user: str, query: str, memo: str, citations: List[Citation]):
+    try:
+        from crud import save_chat_turn
+        await save_chat_turn(
+            session_id=session_id,
+            username=user,
+            query=query,
+            response=memo,
+            citations=[c.model_dump() for c in citations]
+        )
+    except (ImportError, AttributeError):
+        if session_id not in SESSION_STORAGE:
+            SESSION_STORAGE[session_id] = []
+
+        SESSION_STORAGE[session_id].append({
+            "role": "user",
+            "content": query,
+            "citations": None,
+            "timestamp": datetime.utcnow()
+        })
+        SESSION_STORAGE[session_id].append({
+            "role": "assistant",
+            "content": memo,
+            "citations": citations,
+            "timestamp": datetime.utcnow()
+        })
+
+
 @router.post("/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def chat_endpoint(
     request: ChatRequest,
@@ -70,9 +99,19 @@ async def chat_endpoint(
             for c in agent_output.get("citations", [])
         ]
 
+        memo_content = agent_output.get("memo", "No response generated.")
+
+        await persist_chat_turn(
+            session_id=request.session_id,
+            user=current_user.username or "anonymous",
+            query=request.query,
+            memo=memo_content,
+            citations=formatted_citations
+        )
+
         return ChatResponse(
             session_id=request.session_id,
-            memo=agent_output.get("memo", "No response generated."),
+            memo=memo_content,
             citations=formatted_citations,
             generated_at=datetime.utcnow()
         )
@@ -82,3 +121,36 @@ async def chat_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent workflow execution failed: {str(exc)}"
         )
+
+
+@router.get("/history", response_model=HistoryResponse, status_code=status.HTTP_200_OK)
+async def get_chat_history(
+    session_id: str = Query(..., min_length=1, description="Unique identifier for the chat session"),
+    current_user: TokenData = Depends(get_current_user)
+):
+    try:
+        from crud import get_session_history
+        db_records = await get_session_history(session_id=session_id)
+        formatted_messages = [
+            MessageRecord(
+                role=rec.get("role"),
+                content=rec.get("content"),
+                citations=[Citation(**c) for c in rec.get("citations", [])] if rec.get("citations") else None,
+                timestamp=rec.get("timestamp", datetime.utcnow())
+            )
+            for rec in db_records
+        ]
+        return HistoryResponse(session_id=session_id, messages=formatted_messages)
+
+    except (ImportError, AttributeError):
+        records = SESSION_STORAGE.get(session_id, [])
+        formatted_messages = [
+            MessageRecord(
+                role=rec["role"],
+                content=rec["content"],
+                citations=rec.get("citations"),
+                timestamp=rec.get("timestamp", datetime.utcnow())
+            )
+            for rec in records
+        ]
+        return HistoryResponse(session_id=session_id, messages=formatted_messages)
