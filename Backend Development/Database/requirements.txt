@@ -1,0 +1,25 @@
+# --- Core Database & Async ORM ---
+SQLAlchemy>=2.0.25
+asyncpg>=0.29.0
+aiosqlite>=0.19.0
+greenlet>=3.0.3
+
+# --- Data Validation & Settings ---
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+
+# --- Vector Database ---
+qdrant-client>=1.7.3
+
+# --- Environment & Utilities ---
+python-dotenv>=1.0.1
+numpy>=1.26.0
+
+# --- Testing & Quality Assurance ---
+pytest>=8.0.0
+pytest-asyncio>=0.23.5
+httpx>=0.26.0
+
+# --- Notebooks & Interactive Exploration ---
+ipykernel>=6.29.0
+jupyter>=1.0.0
