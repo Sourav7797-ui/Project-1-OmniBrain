@@ -58,3 +58,27 @@ class SystemMetricsResponse(BaseModel):
     total_documents: int
     vector_store_status: str
     uptime_seconds: float
+
+class UserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6)
+    role: str = Field(default="analyst", description="analyst | admin")
+
+
+class UserRecord(BaseModel):
+    username: str
+    role: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DocumentSummary(BaseModel):
+    doc_id: str
+    filename: str
+    total_chunks: int
+    indexed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AdminActionResponse(BaseModel):
+    status: str
+    message: str
+    target_id: Optional[str] = None
