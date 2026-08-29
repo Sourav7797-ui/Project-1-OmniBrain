@@ -1,0 +1,9 @@
+# requirements.txt
+ollama
+pymupdf 
+cloudinary 
+python-dotenv
+qdrant-client
+chromadb 
+tabulate
+pandas
