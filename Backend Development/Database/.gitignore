@@ -1,0 +1,33 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment Variables & Secrets
+.env
+.env.local
+*.secret
+
+# Database & Vector storage
+*.sqlite
+*.sqlite3
+*.db
+qdrant_storage/
+qdrant_data/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Notebooks & IDE
+.ipynb_checkpoints
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
