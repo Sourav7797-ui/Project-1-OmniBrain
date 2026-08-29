@@ -105,6 +105,17 @@ class TokenResponse(BaseModel):
 
 
 class TokenData(BaseModel):
+    feature/Backend
+    username: Optional[str] = None
+    role: Optional[str] = "analyst"
+
+class SystemMetricsResponse(BaseModel):
+    active_sessions: int
+    total_documents: int
+    vector_store_status: str
+    uptime_seconds: float
+
+=======
     """Decoded JWT payload data."""
     user_id: Optional[str] = None
     role: Optional[UserRole] = None
@@ -342,3 +353,4 @@ class HealthCheckResponse(BaseModel):
     qdrant_connected: bool
     version: str = "1.0.0"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+     main
