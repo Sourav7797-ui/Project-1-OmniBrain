@@ -1,8 +1,3 @@
-"""
-OmniBrain System-Wide Pydantic Data Contracts & DTOs.
-Freezes contracts for Chat, Ingestion, Citations, Auth, and Vector Search.
-"""
-
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -34,8 +29,10 @@ class MessageRole(str, Enum):
 class DocumentStatus(str, Enum):
     """Ingestion and processing lifecycle statuses."""
     PENDING = "pending"
+    QUEUED = "queued"
     PROCESSING = "processing"
     INDEXED = "indexed"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 
@@ -60,16 +57,20 @@ class VectorSearchType(str, Enum):
 
 class UserBase(BaseModel):
     """Base user properties."""
-    email: EmailStr
+    email: Optional[EmailStr] = None
     username: str = Field(..., min_length=3, max_length=50)
     full_name: Optional[str] = Field(default=None, max_length=100)
     role: UserRole = UserRole.USER
     is_active: bool = True
 
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
     """Payload for user registration."""
-    password: str = Field(..., min_length=8, description="Plaintext password for registration")
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, description="Plaintext password for registration")
+    role: UserRole = UserRole.ANALYST
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -89,15 +90,21 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     """User entity returned to clients."""
-    id: UUID
-    created_at: datetime
+    id: Optional[UUID] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
+class Token(BaseModel):
+    """Standard OAuth2 bearer token response."""
+    access_token: str
+    token_type: str = "bearer"
+
+
 class TokenResponse(BaseModel):
-    """JWT Token response after successful authentication."""
+    """Extended JWT Token response after successful authentication."""
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -117,9 +124,14 @@ class SystemMetricsResponse(BaseModel):
 
 =======
     """Decoded JWT payload data."""
+    username: Optional[str] = None
     user_id: Optional[str] = None
+<<<<<<< HEAD
+    role: Optional[str] = "analyst"
+=======
     role: Optional[UserRole] = None
 
+>>>>>>> 378d91929bb3a45134aca545ec01ab397b2cdc31
 
 # ============================================================================
 # 3. CITATION & RETRIEVAL DTOS
@@ -127,14 +139,16 @@ class SystemMetricsResponse(BaseModel):
 
 class Citation(BaseModel):
     """Source citation reference supporting an AI response."""
-    id: UUID = Field(default_factory=uuid4)
+    id: Optional[UUID] = Field(default_factory=uuid4)
+    source: Optional[str] = None
     document_id: Optional[UUID] = None
     document_title: Optional[str] = None
     source_type: CitationSource = CitationSource.DOCUMENT
+    page: Optional[int] = None
     page_number: Optional[int] = None
     chunk_index: Optional[int] = None
     snippet: str = Field(..., description="Extracted context or text snippet")
-    score: float = Field(..., ge=0.0, le=1.0, description="Relevance / similarity confidence score")
+    score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Relevance / similarity confidence score")
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -152,15 +166,15 @@ class ChatMessageCreate(BaseModel):
 
 class ChatMessageResponse(BaseModel):
     """Message entity returned to clients."""
-    id: UUID
-    session_id: UUID
+    id: Optional[UUID] = Field(default_factory=uuid4)
+    session_id: Optional[str] = None
     role: MessageRole
     content: str
     image_url: Optional[str] = None
     citations: List[Citation] = Field(default_factory=list)
     tokens_used: Optional[int] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -178,6 +192,36 @@ class ChatSessionUpdate(BaseModel):
     is_archived: Optional[bool] = None
 
 
+class MessageRecord(BaseModel):
+    """Lightweight record for conversational history."""
+    role: str = Field(..., description="user | assistant")
+    content: str
+    citations: Optional[List[Citation]] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class HistoryResponse(BaseModel):
+    """Response payload for chat history queries."""
+    session_id: str
+    messages: List[MessageRecord] = Field(default_factory=list)
+
+
+class ChatRequest(BaseModel):
+    """High-level query request sent to the RAG pipeline."""
+    query: str = Field(..., min_length=1, description="Analyst financial question or instruction")
+    session_id: str = Field(..., description="Active chat session identifier")
+    filters: Optional[Dict[str, Any]] = Field(default=None, description="Metadata filters for search")
+    search_type: Optional[VectorSearchType] = VectorSearchType.HYBRID
+
+
+class ChatResponse(BaseModel):
+    """Structured response from the OmniBrain supervisor agent."""
+    session_id: str
+    memo: str = Field(..., description="Synthesized investment memo or analytical response")
+    citations: List[Citation] = Field(default_factory=list, description="Grounding citations")
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ChatSessionResponse(BaseModel):
     """Chat session details with message history metadata."""
     id: UUID
@@ -191,29 +235,27 @@ class ChatSessionResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
-class ChatQueryRequest(BaseModel):
-    """High-level multi-modal query request sent to the RAG pipeline."""
-    session_id: Optional[UUID] = None
-    query: str = Field(..., min_length=1, description="User's query prompt")
-    image_url: Optional[str] = None
-    search_type: VectorSearchType = VectorSearchType.HYBRID
-    filter_tags: List[str] = Field(default_factory=list)
-    top_k: int = Field(default=5, ge=1, le=50)
-
-
-class ChatQueryResponse(BaseModel):
-    """Structured response from the OmniBrain AI engine."""
-    session_id: UUID
-    message: ChatMessageResponse
-    citations: List[Citation] = Field(default_factory=list)
-    latency_ms: float
-    model_name: str
-
-
 # ============================================================================
-# 5. DOCUMENT INGESTION DTOS
+# 5. DOCUMENT INGESTION & STATUS DTOS
 # ============================================================================
+
+class UploadResponse(BaseModel):
+    """Immediate response after staging an upload."""
+    job_id: str = Field(..., description="Unique UUID tracking the ingestion job")
+    filename: str = Field(..., description="Original name of the uploaded document")
+    status: str = Field(default="queued", description="Initial job status")
+    message: str = Field(..., description="Status summary message")
+
+
+class JobStatusResponse(BaseModel):
+    """Status polling response for document processing."""
+    job_id: str
+    status: str = Field(..., description="queued | processing | completed | failed")
+    progress: int = Field(default=0, ge=0, le=100, description="Completion percentage")
+    filename: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 
 class DocumentMetadata(BaseModel):
     """Structured metadata associated with an ingested file."""
@@ -236,40 +278,12 @@ class DocumentChunk(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class DocumentIngestionRequest(BaseModel):
-    """Request contract for ingesting a document into the system."""
-    title: str = Field(..., min_length=1, max_length=255)
-    file_url: Optional[str] = None
-    metadata: DocumentMetadata
-    chunk_size: int = Field(default=512, ge=64, le=2048)
-    chunk_overlap: int = Field(default=50, ge=0, le=512)
-
-
-class DocumentIngestionResponse(BaseModel):
-    """Response returned upon initiating document processing."""
-    document_id: UUID
-    title: str
-    status: DocumentStatus
+class DocumentSummary(BaseModel):
+    """Document summary used in admin management lists."""
+    doc_id: str
+    filename: str
     total_chunks: int = 0
-    message: str = "Document queued for processing"
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class DocumentSummaryResponse(BaseModel):
-    """Summary representation for document listings."""
-    id: UUID
-    user_id: UUID
-    title: str
-    status: DocumentStatus
-    file_type: str
-    file_size_bytes: int
-    chunk_count: int
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)
+    indexed_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # ============================================================================
@@ -302,48 +316,23 @@ class VectorSearchResult(BaseModel):
     payload: Dict[str, Any]
     vector: Optional[List[float]] = None
 
-
-class VectorUpsertRequest(BaseModel):
-    """Payload for batch upserting points into Qdrant."""
-    collection_name: str
-    point_ids: List[str]
-    vectors: List[List[float]]
-    payloads: List[Dict[str, Any]]
-
-
-class VectorUpsertResponse(BaseModel):
-    """Status result of a batch vector upsert operation."""
-    collection_name: str
-    upserted_count: int
-    status: str = "success"
-
-
 # ============================================================================
-# 7. AUDIT LOGS & SYSTEM HEALTH
+# 7. SYSTEM METRICS & ADMIN ACTIONS
 # ============================================================================
 
-class AuditLogCreate(BaseModel):
-    """Contract for logging system events."""
-    user_id: Optional[UUID] = None
-    action: str = Field(..., min_length=1, max_length=100)
-    resource_type: str = Field(..., max_length=50)
-    resource_id: Optional[str] = None
-    details: Dict[str, Any] = Field(default_factory=dict)
-    ip_address: Optional[str] = None
+class SystemMetricsResponse(BaseModel):
+    """Metrics returned to Streamlit admin dashboard."""
+    active_sessions: int
+    total_documents: int
+    vector_store_status: str
+    uptime_seconds: float
 
 
-class AuditLogResponse(BaseModel):
-    """Audit log entry representation."""
-    id: UUID
-    user_id: Optional[UUID] = None
-    action: str
-    resource_type: str
-    resource_id: Optional[str] = None
-    details: Dict[str, Any]
-    ip_address: Optional[str] = None
-    timestamp: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+class AdminActionResponse(BaseModel):
+    """Confirmation payload for admin operations."""
+    status: str
+    message: str
+    target_id: Optional[str] = None
 
 
 class HealthCheckResponse(BaseModel):
@@ -352,5 +341,9 @@ class HealthCheckResponse(BaseModel):
     database_connected: bool
     qdrant_connected: bool
     version: str = "1.0.0"
+<<<<<<< HEAD
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+=======
     timestamp: datetime = Field(default_factory=datetime.utcnow)
      main
+>>>>>>> 378d91929bb3a45134aca545ec01ab397b2cdc31
