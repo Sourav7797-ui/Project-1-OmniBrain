@@ -1,19 +1,27 @@
 import time
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
 from Routers import admin, chat, upload
-from auth import create_access_token
-from Database.schemas import Token
 
 START_TIME = time.time()
+
+
+class GuardrailViolationException(Exception):
+    def __init__(self, message: str, violation_type: str = "safety_policy_violation"):
+        self.message = message
+        self.violation_type = violation_type
+        super().__init__(self.message)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("OmniBrain Backend is initializing services...")
     yield
     print("OmniBrain Backend is shutting down...")
+
 
 app = FastAPI(
     title="OmniBrain API",
@@ -30,26 +38,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/api/v1/auth/token", response_model=Token, tags=["Auth"])
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    
-    if form_data.username == "admin" and form_data.password == "admin123":
-        role = "admin"
-    elif form_data.username == "analyst" and form_data.password == "analyst123":
-        role = "analyst"
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
-    access_token = create_access_token(data={"sub": form_data.username, "role": role})
-    return {"access_token": access_token, "token_type": "bearer"}
+@app.middleware("http")
+async def trace_and_telemetry_middleware(request: Request, call_next):
+    trace_id = request.headers.get("x-trace-id", str(uuid.uuid4()))
+    request.state.trace_id = trace_id
+
+    start_time = time.time()
+    response = await call_next(request)
+    latency_ms = round((time.time() - start_time) * 1000, 2)
+
+    response.headers["x-trace-id"] = trace_id
+    response.headers["x-latency-ms"] = str(latency_ms)
+    return response
+
+
+@app.exception_handler(GuardrailViolationException)
+async def handle_guardrail_violation(request: Request, exc: GuardrailViolationException):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "GuardrailViolation",
+            "violation_type": exc.violation_type,
+            "message": exc.message,
+            "trace_id": getattr(request.state, "trace_id", None)
+        }
+    )
+
 
 app.include_router(upload.router, prefix="/api/v1", tags=["Ingestion"])
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat & Agents"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+
 
 @app.get("/health", tags=["Health"])
 async def health_check():
