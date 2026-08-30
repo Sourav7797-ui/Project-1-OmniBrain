@@ -150,10 +150,8 @@ async def chat_endpoint(
 ):
     trace_id = getattr(request_http.state, "trace_id", str(uuid.uuid4()))
 
-    # 1. Apply Input Guardrails (NeMo)
     validated_query = await apply_guardrails_input(request.query, trace_id=trace_id)
 
-    # 2. Delegate to LangGraph Supervisor
     agent_output = await invoke_agent_supervisor(
         query=validated_query,
         session_id=request.session_id,
@@ -163,7 +161,6 @@ async def chat_endpoint(
 
     raw_memo = agent_output.get("memo", "No response generated.")
 
-    # 3. Apply Output Guardrails (Groundedness / Hallucination checks)
     sanitized_memo = await apply_guardrails_output(raw_memo, trace_id=trace_id)
 
     formatted_citations = [
@@ -176,7 +173,6 @@ async def chat_endpoint(
         for c in agent_output.get("citations", [])
     ]
 
-    # 4. Save Session History & Emit Langfuse Traces
     await persist_chat_turn(
         session_id=request.session_id,
         user=current_user.username or "anonymous",
