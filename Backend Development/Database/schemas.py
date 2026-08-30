@@ -112,10 +112,26 @@ class TokenResponse(BaseModel):
 
 
 class TokenData(BaseModel):
+    feature/Backend
+    username: Optional[str] = None
+    role: Optional[str] = "analyst"
+
+class SystemMetricsResponse(BaseModel):
+    active_sessions: int
+    total_documents: int
+    vector_store_status: str
+    uptime_seconds: float
+
+=======
     """Decoded JWT payload data."""
     username: Optional[str] = None
     user_id: Optional[str] = None
+<<<<<<< HEAD
     role: Optional[str] = "analyst"
+=======
+    role: Optional[UserRole] = None
+
+>>>>>>> 378d91929bb3a45134aca545ec01ab397b2cdc31
 
 # ============================================================================
 # 3. CITATION & RETRIEVAL DTOS
@@ -325,4 +341,9 @@ class HealthCheckResponse(BaseModel):
     database_connected: bool
     qdrant_connected: bool
     version: str = "1.0.0"
+<<<<<<< HEAD
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+=======
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+     main
+>>>>>>> 378d91929bb3a45134aca545ec01ab397b2cdc31
