@@ -1,11 +1,15 @@
 import time
 import uuid
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Routers import admin, chat, upload
 
+from Database import init_db, close_db
+from Routers import auth, admin, chat, upload
+
+logger = logging.getLogger("omnibrain.main")
 START_TIME = time.time()
 
 
@@ -19,8 +23,20 @@ class GuardrailViolationException(Exception):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("OmniBrain Backend is initializing services...")
+    try:
+        # Initialize SQL tables on startup
+        await init_db()
+        print("Database tables verified and initialized.")
+    except Exception as exc:
+        print(f"Database initialization warning: {exc}")
+    
     yield
+    
     print("OmniBrain Backend is shutting down...")
+    try:
+        await close_db()
+    except Exception as exc:
+        print(f"Error closing DB sessions: {exc}")
 
 
 app = FastAPI(
@@ -66,8 +82,19 @@ async def handle_guardrail_violation(request: Request, exc: GuardrailViolationEx
     )
 
 
+# ----------------------------------------------------------------------
+# API Routers Registration
+# ----------------------------------------------------------------------
+# Auth: /api/v1/auth/login, /api/v1/auth/register
+app.include_router(auth.router, tags=["Authentication"])
+
+# Ingestion: /api/v1/upload
 app.include_router(upload.router, prefix="/api/v1", tags=["Ingestion"])
+
+# Chat & Agents: /api/v1/chat
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat & Agents"])
+
+# Admin: /api/v1/admin/*
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
 
