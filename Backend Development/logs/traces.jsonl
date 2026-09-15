@@ -1,0 +1,1 @@
+{"trace_id": "t5", "session_id": "s1", "input_query": "test query", "output_memo": "test memo", "citation_count": 1, "citations": [{"source": "doc.pdf", "page": 1, "snippet": "x", "score": 0.9}], "timestamp": "2026-09-15T11:03:49.462708+00:00"}

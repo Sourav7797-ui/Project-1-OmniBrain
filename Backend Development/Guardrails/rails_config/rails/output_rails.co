@@ -1,0 +1,14 @@
+define bot refuse unsafe output
+  "I need to withhold that response — it didn't pass our safety and groundedness checks."
+
+define flow self check output
+  $allowed = execute self_check_output
+  if not $allowed
+    bot refuse unsafe output
+    stop
+
+define flow check groundedness
+  $grounded = execute check_facts
+  if not $grounded
+    bot refuse unsafe output
+    stop

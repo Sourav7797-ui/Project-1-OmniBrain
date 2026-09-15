@@ -1,0 +1,4 @@
+# --- Guardrails & Eval ---
+nemoguardrails>=0.10.0
+langfuse>=2.36.0
+python-dotenv>=1.0.1

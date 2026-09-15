@@ -1,0 +1,32 @@
+#
+# OmniBrain NeMo Guardrails configuration
+#
+# This config is loaded by Guardrails/nemo_config.py via
+# `RailsConfig.from_path(...)`. It wires the LLM used for self-checking
+# and points at the Colang flows under rails/.
+#
+# Set NEMO_GUARDRAILS_MODEL / NEMO_GUARDRAILS_PROVIDER via env if you
+# want to point this at something other than the defaults below.
+
+models:
+  - type: main
+    engine: openai
+    model: gpt-4o-mini
+
+rails:
+  input:
+    flows:
+      - self check input
+      - check jailbreak
+  output:
+    flows:
+      - self check output
+      - check groundedness
+
+  # If a rail can't reach the LLM (no API key / offline demo), nemo_config.py
+  # falls back to the local heuristic checks instead of hard-failing.
+  dialog:
+    single_call:
+      enabled: false
+
+streaming: false
