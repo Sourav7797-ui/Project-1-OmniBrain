@@ -1,17 +1,20 @@
 """
 Async Qdrant Vector Store Service for OmniBrain.
 Manages 'omnibrain_text' and 'omnibrain_images' collections, batch upserts,
-payload filtering, and hybrid multi-modal similarity searches.
+payload filtering, hybrid multi-modal similarity searches, and admin helpers.
 """
 
 import os
 import uuid
+import logging
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as rest_models
 from qdrant_client.http.exceptions import UnexpectedResponse
+
+logger = logging.getLogger(__name__)
 
 # Load environment configuration
 load_dotenv()
@@ -51,7 +54,7 @@ class QdrantVectorStore:
             grpc_port=grpc_port,
             api_key=self.api_key,
             prefer_grpc=self.prefer_grpc,
-            timeout=30.0,
+            timeout=10.0,
         )
         self.text_collection = TEXT_COLLECTION
         self.image_collection = IMAGE_COLLECTION
@@ -63,37 +66,39 @@ class QdrantVectorStore:
         Creates 'omnibrain_text' and 'omnibrain_images' collections
         if they do not already exist.
         """
-        existing_collections_res = await self.client.get_collections()
-        existing_names = [c.name for c in existing_collections_res.collections]
+        try:
+            existing_collections_res = await self.client.get_collections()
+            existing_names = [c.name for c in existing_collections_res.collections]
 
-        # 1. Initialize Text Collection
-        if self.text_collection not in existing_names:
-            await self.client.create_collection(
-                collection_name=self.text_collection,
-                vectors_config=rest_models.VectorParams(
-                    size=self.text_vector_size,
-                    distance=rest_models.Distance.COSINE,
-                ),
-                optimizers_config=rest_models.OptimizersConfigDiff(
-                    indexing_threshold=10000
-                ),
-            )
-            # Create payload index for fast filtering
-            await self._create_payload_indexes(self.text_collection)
+            # 1. Initialize Text Collection
+            if self.text_collection not in existing_names:
+                await self.client.create_collection(
+                    collection_name=self.text_collection,
+                    vectors_config=rest_models.VectorParams(
+                        size=self.text_vector_size,
+                        distance=rest_models.Distance.COSINE,
+                    ),
+                    optimizers_config=rest_models.OptimizersConfigDiff(
+                        indexing_threshold=10000
+                    ),
+                )
+                await self._create_payload_indexes(self.text_collection)
 
-        # 2. Initialize Image Collection
-        if self.image_collection not in existing_names:
-            await self.client.create_collection(
-                collection_name=self.image_collection,
-                vectors_config=rest_models.VectorParams(
-                    size=self.image_vector_size,
-                    distance=rest_models.Distance.COSINE,
-                ),
-                optimizers_config=rest_models.OptimizersConfigDiff(
-                    indexing_threshold=5000
-                ),
-            )
-            await self._create_payload_indexes(self.image_collection)
+            # 2. Initialize Image Collection
+            if self.image_collection not in existing_names:
+                await self.client.create_collection(
+                    collection_name=self.image_collection,
+                    vectors_config=rest_models.VectorParams(
+                        size=self.image_vector_size,
+                        distance=rest_models.Distance.COSINE,
+                    ),
+                    optimizers_config=rest_models.OptimizersConfigDiff(
+                        indexing_threshold=5000
+                    ),
+                )
+                await self._create_payload_indexes(self.image_collection)
+        except Exception as exc:
+            logger.warning(f"Failed to auto-initialize Qdrant collections (is Qdrant running?): {exc}")
 
     async def _create_payload_indexes(self, collection_name: str) -> None:
         """Create indexes for commonly filtered fields."""
@@ -118,9 +123,7 @@ class QdrantVectorStore:
         payloads: List[Dict[str, Any]],
         ids: Optional[List[str]] = None,
     ) -> bool:
-        """
-        Batch upsert text embeddings into the omnibrain_text collection.
-        """
+        """Batch upsert text embeddings into the omnibrain_text collection."""
         if not vectors:
             return True
 
@@ -136,12 +139,16 @@ class QdrantVectorStore:
             for point_id, vector, payload in zip(ids, vectors, payloads)
         ]
 
-        await self.client.upsert(
-            collection_name=self.text_collection,
-            points=points,
-            wait=True,
-        )
-        return True
+        try:
+            await self.client.upsert(
+                collection_name=self.text_collection,
+                points=points,
+                wait=True,
+            )
+            return True
+        except Exception as exc:
+            logger.error(f"Error upserting text vectors: {exc}")
+            return False
 
     async def upsert_image_vectors(
         self,
@@ -149,9 +156,7 @@ class QdrantVectorStore:
         payloads: List[Dict[str, Any]],
         ids: Optional[List[str]] = None,
     ) -> bool:
-        """
-        Batch upsert image embeddings into the omnibrain_images collection.
-        """
+        """Batch upsert image embeddings into the omnibrain_images collection."""
         if not vectors:
             return True
 
@@ -167,12 +172,16 @@ class QdrantVectorStore:
             for point_id, vector, payload in zip(ids, vectors, payloads)
         ]
 
-        await self.client.upsert(
-            collection_name=self.image_collection,
-            points=points,
-            wait=True,
-        )
-        return True
+        try:
+            await self.client.upsert(
+                collection_name=self.image_collection,
+                points=points,
+                wait=True,
+            )
+            return True
+        except Exception as exc:
+            logger.error(f"Error upserting image vectors: {exc}")
+            return False
 
     # =========================================================================
     # SEARCH OPERATIONS
@@ -211,28 +220,30 @@ class QdrantVectorStore:
         score_threshold: float = 0.0,
         filter_dict: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Perform cosine similarity search on the text collection.
-        """
+        """Perform cosine similarity search on the text collection."""
         qdrant_filter = self._build_filter(filter_dict)
 
-        results = await self.client.search(
-            collection_name=self.text_collection,
-            query_vector=query_vector,
-            query_filter=qdrant_filter,
-            limit=top_k,
-            score_threshold=score_threshold if score_threshold > 0 else None,
-            with_payload=True,
-        )
+        try:
+            results = await self.client.search(
+                collection_name=self.text_collection,
+                query_vector=query_vector,
+                query_filter=qdrant_filter,
+                limit=top_k,
+                score_threshold=score_threshold if score_threshold > 0 else None,
+                with_payload=True,
+            )
 
-        return [
-            {
-                "id": str(hit.id),
-                "score": float(hit.score),
-                "payload": hit.payload or {},
-            }
-            for hit in results
-        ]
+            return [
+                {
+                    "id": str(hit.id),
+                    "score": float(hit.score),
+                    "payload": hit.payload or {},
+                }
+                for hit in results
+            ]
+        except Exception as exc:
+            logger.warning(f"search_text failed or Qdrant unavailable: {exc}")
+            return []
 
     async def search_images(
         self,
@@ -241,28 +252,30 @@ class QdrantVectorStore:
         score_threshold: float = 0.0,
         filter_dict: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Perform cosine similarity search on the image collection.
-        """
+        """Perform cosine similarity search on the image collection."""
         qdrant_filter = self._build_filter(filter_dict)
 
-        results = await self.client.search(
-            collection_name=self.image_collection,
-            query_vector=query_vector,
-            query_filter=qdrant_filter,
-            limit=top_k,
-            score_threshold=score_threshold if score_threshold > 0 else None,
-            with_payload=True,
-        )
+        try:
+            results = await self.client.search(
+                collection_name=self.image_collection,
+                query_vector=query_vector,
+                query_filter=qdrant_filter,
+                limit=top_k,
+                score_threshold=score_threshold if score_threshold > 0 else None,
+                with_payload=True,
+            )
 
-        return [
-            {
-                "id": str(hit.id),
-                "score": float(hit.score),
-                "payload": hit.payload or {},
-            }
-            for hit in results
-        ]
+            return [
+                {
+                    "id": str(hit.id),
+                    "score": float(hit.score),
+                    "payload": hit.payload or {},
+                }
+                for hit in results
+            ]
+        except Exception as exc:
+            logger.warning(f"search_images failed or Qdrant unavailable: {exc}")
+            return []
 
     async def hybrid_search(
         self,
@@ -273,12 +286,9 @@ class QdrantVectorStore:
         top_k: int = 5,
         filter_dict: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Combines and ranks similarity results across both text and image modalities.
-        """
+        """Combines and ranks similarity results across both text and image modalities."""
         combined_results: Dict[str, Dict[str, Any]] = {}
 
-        # 1. Search text if provided
         if text_vector:
             text_hits = await self.search_text(
                 query_vector=text_vector,
@@ -295,7 +305,6 @@ class QdrantVectorStore:
                     "payload": hit["payload"],
                 }
 
-        # 2. Search images if provided
         if image_vector:
             image_hits = await self.search_images(
                 query_vector=image_vector,
@@ -315,7 +324,6 @@ class QdrantVectorStore:
                         "payload": hit["payload"],
                     }
 
-        # 3. Sort by aggregated score descending
         sorted_results = sorted(
             combined_results.values(),
             key=lambda x: x["score"],
@@ -327,22 +335,26 @@ class QdrantVectorStore:
     # DELETION & HEALTH
     # =========================================================================
 
-    async def delete_by_document_id(self, collection_name: str, document_id: str) -> bool:
-        """Delete all vector points associated with a specific document UUID."""
-        await self.client.delete(
-            collection_name=collection_name,
-            points_selector=rest_models.FilterSelector(
-                filter=rest_models.Filter(
-                    must=[
-                        rest_models.FieldCondition(
-                            key="document_id",
-                            match=rest_models.MatchValue(value=str(document_id)),
-                        )
-                    ]
-                )
-            ),
-        )
-        return True
+    async def delete_by_document_id(self, collection_name: str, document_id: Any) -> bool:
+        """Delete all vector points associated with a specific document ID."""
+        try:
+            await self.client.delete(
+                collection_name=collection_name,
+                points_selector=rest_models.FilterSelector(
+                    filter=rest_models.Filter(
+                        must=[
+                            rest_models.FieldCondition(
+                                key="document_id",
+                                match=rest_models.MatchValue(value=str(document_id)),
+                            )
+                        ]
+                    )
+                ),
+            )
+            return True
+        except Exception as exc:
+            logger.error(f"Error deleting vectors for document {document_id}: {exc}")
+            return False
 
     async def health_check(self) -> bool:
         """Verify active connection to Qdrant cluster."""
@@ -359,3 +371,19 @@ class QdrantVectorStore:
 
 # Global singleton instance
 vector_store = QdrantVectorStore()
+
+
+# =============================================================================
+# STANDALONE HELPER FUNCTIONS (Imported by Routers/admin.py)
+# =============================================================================
+
+async def check_vector_store_health() -> bool:
+    """Admin health check wrapper."""
+    return await vector_store.health_check()
+
+
+async def delete_document_vectors(document_id: Any) -> bool:
+    """Admin document deletion wrapper across text and image collections."""
+    t_del = await vector_store.delete_by_document_id(TEXT_COLLECTION, document_id)
+    i_del = await vector_store.delete_by_document_id(IMAGE_COLLECTION, document_id)
+    return t_del or i_del
