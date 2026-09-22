@@ -11,6 +11,10 @@ from .database import (
     init_db,
     close_db,
 )
+
+# Provide backward-compatible alias for routers expecting async_session_factory
+async_session_factory = AsyncSessionLocal
+
 from .models import (
     User,
     Document,
@@ -21,6 +25,8 @@ from .models import (
 from .vector_store import (
     QdrantVectorStore,
     vector_store,
+    check_vector_store_health,
+    delete_document_vectors,
 )
 from .schemas import (
     # Auth & User Schemas
@@ -94,12 +100,15 @@ __all__ = [
     "Base",
     "engine",
     "AsyncSessionLocal",
+    "async_session_factory",
     "get_db",
     "init_db",
     "close_db",
     # Vector Store
     "QdrantVectorStore",
     "vector_store",
+    "check_vector_store_health",
+    "delete_document_vectors",
     # ORM Models
     "User",
     "Document",

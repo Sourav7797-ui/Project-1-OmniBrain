@@ -10,6 +10,8 @@ from Database import init_db, close_db
 from Routers import auth, admin, chat, upload
 
 logger = logging.getLogger("omnibrain.main")
+logging.basicConfig(level=logging.INFO)
+
 START_TIME = time.time()
 
 
@@ -22,21 +24,20 @@ class GuardrailViolationException(Exception):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("OmniBrain Backend is initializing services...")
+    logger.info("OmniBrain Backend is initializing services...")
     try:
-        # Initialize SQL tables on startup
         await init_db()
-        print("Database tables verified and initialized.")
+        logger.info("Database tables verified and initialized.")
     except Exception as exc:
-        print(f"Database initialization warning: {exc}")
+        logger.warning(f"Database initialization warning (non-fatal): {exc}")
     
     yield
     
-    print("OmniBrain Backend is shutting down...")
+    logger.info("OmniBrain Backend is shutting down...")
     try:
         await close_db()
     except Exception as exc:
-        print(f"Error closing DB sessions: {exc}")
+        logger.warning(f"Error during database shutdown: {exc}")
 
 
 app = FastAPI(
@@ -46,12 +47,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Cross-Origin Resource Sharing (CORS) setup for Streamlit frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["x-trace-id", "x-latency-ms"]
 )
 
 
@@ -83,10 +86,10 @@ async def handle_guardrail_violation(request: Request, exc: GuardrailViolationEx
 
 
 # ----------------------------------------------------------------------
-# API Routers Registration
+# API Routers Registration (Unified under /api/v1)
 # ----------------------------------------------------------------------
-# Auth: /api/v1/auth/login, /api/v1/auth/register
-app.include_router(auth.router, tags=["Authentication"])
+# Auth router has prefix="/api/v1/auth" built-in
+app.include_router(auth.router)
 
 # Ingestion: /api/v1/upload
 app.include_router(upload.router, prefix="/api/v1", tags=["Ingestion"])

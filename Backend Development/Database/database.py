@@ -18,24 +18,29 @@ from sqlalchemy.orm import DeclarativeBase
 # Load environment variables
 load_dotenv()
 
-# Database connection URL (defaults to PostgreSQL asyncpg or local SQLite fallback)
+# Database connection URL (defaults to async SQLite for local development)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/omnibrain_db"
+    "sqlite+aiosqlite:///./omnibrain.db"
 )
 
-# SQLite-specific connect args if using SQLite
+# Engine configuration tuning depending on dialect
 connect_args = {}
+engine_kwargs = {
+    "echo": os.getenv("DEBUG", "False").lower() in ("true", "1", "t"),
+    "future": True,
+}
+
 if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+    connect_args["check_same_thread"] = False
+else:
+    engine_kwargs["pool_pre_ping"] = True
 
 # Async Engine
 engine = create_async_engine(
     DATABASE_URL,
-    echo=os.getenv("DEBUG", "False").lower() in ("true", "1", "t"),
-    future=True,
-    pool_pre_ping=True,
     connect_args=connect_args,
+    **engine_kwargs,
 )
 
 # Async Session Factory
@@ -46,6 +51,9 @@ AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
+
+# Alias for backward compatibility across routers
+async_session_factory = AsyncSessionLocal
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -70,7 +78,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initializes all database tables async."""
+    """
+    Initializes all database tables async.
+    Imports models first so Base.metadata is fully populated.
+    """
+    # Import all models to ensure metadata registration
+    try:
+        from . import models  # noqa: F401
+    except ImportError:
+        import models  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
